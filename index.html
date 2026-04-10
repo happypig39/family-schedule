@@ -172,7 +172,7 @@
     .remind-card.urgent .remind-label  { color: #d32f2f; }
     .remind-card.warning .remind-label { color: #f57c00; }
 
-    /* ── Badge ───────────────────────────────── */
+    /* ── Badge base ──────────────────────────── */
     .badge {
       display: inline-flex;
       align-items: center;
@@ -182,6 +182,13 @@
       font-weight: 700;
       white-space: nowrap;
     }
+
+    /* ── Badge colors (カテゴリ別クラス) ────── */
+    .badge-work   { background: #E6F1FB; color: #0C447C; }
+    .badge-family { background: #EAF3DE; color: #27500A; }
+    .badge-hitomi { background: #FAEEDA; color: #633806; }
+    .badge-koharu { background: #FBEAF0; color: #72243E; }
+    .badge-miyu   { background: #EEEDFE; color: #3C3489; }
 
     /* ── Divider ─────────────────────────────── */
     .divider { height: 1px; background: #e8eaed; margin: 22px 0; }
@@ -443,6 +450,13 @@
     }
     .gcal-top-link:hover { background: #e8f0fe; }
 
+    /* ── Time row (開始・終了 2列) ───────────── */
+    .time-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
     /* ── Responsive ──────────────────────────── */
     @media (min-width: 540px) {
       .cat-color-row { flex-direction: row; flex-wrap: wrap; }
@@ -527,8 +541,16 @@
   </div>
 
   <div class="form-group">
-    <label class="form-label" for="f-time">時刻（任意）</label>
-    <input type="time" id="f-time">
+    <div class="time-row">
+      <div>
+        <label class="form-label" for="f-time-start">開始時刻（任意）</label>
+        <input type="time" id="f-time-start">
+      </div>
+      <div>
+        <label class="form-label" for="f-time-end">終了時刻（任意）</label>
+        <input type="time" id="f-time-end">
+      </div>
+    </div>
   </div>
 
   <div class="form-group">
@@ -698,8 +720,8 @@ function esc(s) {
    BADGE
 ===================================================== */
 function badge(cat) {
-  const c = CATS[cat] || CATS.family;
-  return `<span class="badge" style="background:${c.bg};color:${c.color};">${c.label}</span>`;
+  const label = (CATS[cat] || CATS.family).label;
+  return `<span class="badge badge-${cat}">${label}</span>`;
 }
 
 /* =====================================================
@@ -708,8 +730,8 @@ function badge(cat) {
 function init() {
   // Legend
   document.getElementById('legend').innerHTML =
-    Object.entries(CATS).map(([,v]) =>
-      `<span class="legend-badge" style="background:${v.bg};color:${v.color};">${v.label}</span>`
+    Object.keys(CATS).map(k =>
+      `<span class="legend-badge badge-${k}">${CATS[k].label}</span>`
     ).join('');
 
   // Guide colors
@@ -748,7 +770,7 @@ function renderReminders() {
       const diff = daysDiff(ev.date);
       return diff >= 0 && diff <= parseInt(ev.remindDays || 0);
     })
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.time||'').localeCompare(b.time||''));
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.timeStart||a.time||'').localeCompare(b.timeStart||b.time||''));
 
   const el = document.getElementById('remindList');
 
@@ -770,7 +792,7 @@ function renderReminders() {
           <span class="card-title">${esc(ev.title)}</span>
         </div>
         <div class="card-meta">
-          📅 ${fmtDate(ev.date)}${ev.time ? '　⏰ ' + esc(ev.time) : ''}
+          📅 ${fmtDate(ev.date)}${fmtTimeRange(ev) ? '　⏰ ' + esc(fmtTimeRange(ev)) : ''}
           ${ev.location ? '　📍 ' + esc(ev.location) : ''}
         </div>
         ${ev.memo ? `<div class="card-memo">📝 事前準備：${esc(ev.memo)}</div>` : ''}
@@ -782,7 +804,7 @@ function renderTodayList() {
   const today = todayStr();
   const todayEvs = loadEvents()
     .filter(ev => ev.date === today)
-    .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+    .sort((a, b) => (a.timeStart || a.time || '99:99').localeCompare(b.timeStart || b.time || '99:99'));
 
   const el = document.getElementById('todayList');
 
@@ -793,7 +815,7 @@ function renderTodayList() {
 
   el.innerHTML = todayEvs.map(ev => `
     <div class="card">
-      ${ev.time ? `<div class="time-chip">⏰ ${esc(ev.time)}</div>` : ''}
+      ${fmtTimeRange(ev) ? `<div class="time-chip">⏰ ${esc(fmtTimeRange(ev))}</div>` : ''}
       <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px;">
         ${badge(ev.category)}
         <span class="card-title">${esc(ev.title)}</span>
@@ -820,7 +842,7 @@ function toggleEventList() {
 }
 
 function renderAllEventList() {
-  const events = loadEvents().sort((a,b) => a.date.localeCompare(b.date) || (a.time||'').localeCompare(b.time||''));
+  const events = loadEvents().sort((a,b) => a.date.localeCompare(b.date) || (a.timeStart||a.time||'').localeCompare(b.timeStart||b.time||''));
   const el = document.getElementById('allEventList');
 
   if (!events.length) {
@@ -839,7 +861,7 @@ function renderAllEventList() {
             <span class="event-name">${esc(ev.title)}</span>
           </div>
           <div class="event-date">
-            📅 ${fmtDate(ev.date)}${ev.time ? '　⏰ ' + esc(ev.time) : ''}
+            📅 ${fmtDate(ev.date)}${fmtTimeRange(ev) ? '　⏰ ' + esc(fmtTimeRange(ev)) : ''}
             ${ev.location ? '<br>📍 ' + esc(ev.location) : ''}
           </div>
         </div>
@@ -861,7 +883,8 @@ function generateEvent() {
   const category   = document.getElementById('f-category').value;
   const title      = document.getElementById('f-title').value.trim();
   const date       = document.getElementById('f-date').value;
-  const time       = document.getElementById('f-time').value;
+  const timeStart  = document.getElementById('f-time-start').value;
+  const timeEnd    = document.getElementById('f-time-end').value;
   const location   = document.getElementById('f-location').value.trim();
   const memo       = document.getElementById('f-memo').value.trim();
   const remindDays = document.getElementById('f-remind').value;
@@ -870,10 +893,13 @@ function generateEvent() {
   if (!date)  { alert('日付を選択してください'); return; }
 
   // Save locally
-  addEvent({ category, title, date, time, location, memo, remindDays });
+  addEvent({ category, title, date, timeStart, timeEnd, location, memo, remindDays });
 
   // Build Google Calendar URL
-  const url = buildGCalURL({ category, title, date, time, location, memo });
+  const url = buildGCalURL({ category, title, date, timeStart, timeEnd, location, memo });
+
+  // Time display string for result card
+  const timeDisplay = fmtTimeRange({ timeStart, timeEnd });
 
   const result = document.getElementById('gcal-result');
   result.style.display = 'block';
@@ -885,7 +911,7 @@ function generateEvent() {
         <span>${esc(title)}</span>
       </div>
       <div class="res-meta">
-        📅 ${fmtDate(date)}${time ? '　⏰ ' + esc(time) : ''}
+        📅 ${fmtDate(date)}${timeDisplay ? '　⏰ ' + esc(timeDisplay) : ''}
         ${location ? '<br>📍 ' + esc(location) : ''}
       </div>
       ${memo ? `<div class="card-memo" style="margin-top:8px;">📝 ${esc(memo)}</div>` : ''}
@@ -895,25 +921,36 @@ function generateEvent() {
     </div>`;
 
   // Reset form fields (keep category, date, remind)
-  document.getElementById('f-title').value    = '';
-  document.getElementById('f-time').value     = '';
-  document.getElementById('f-location').value = '';
-  document.getElementById('f-memo').value     = '';
+  document.getElementById('f-title').value      = '';
+  document.getElementById('f-time-start').value = '';
+  document.getElementById('f-time-end').value   = '';
+  document.getElementById('f-location').value   = '';
+  document.getElementById('f-memo').value       = '';
 
   renderTab0();
 }
 
-function buildGCalURL({ category, title, date, time, location, memo }) {
+function buildGCalURL({ category, title, date, timeStart, timeEnd, location, memo }) {
   const base = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
   const text = encodeURIComponent(`[${CATS[category].label}] ${title}`);
 
   let dates;
-  if (time) {
-    const start = new Date(`${date}T${time}:00`);
-    const end   = new Date(start.getTime() + 60 * 60 * 1000); // +1h
+  if (timeStart) {
+    // 開始時刻あり
+    const start = new Date(`${date}T${timeStart}:00`);
+    let end;
+    if (timeEnd) {
+      // 終了時刻も指定されている場合はそのまま使用
+      end = new Date(`${date}T${timeEnd}:00`);
+      // 終了が開始より早い場合は翌日扱い
+      if (end <= start) end.setDate(end.getDate() + 1);
+    } else {
+      // 開始のみ → 1時間後を終了とする
+      end = new Date(start.getTime() + 60 * 60 * 1000);
+    }
     dates = `${fmtGCal(start)}/${fmtGCal(end)}`;
   } else {
-    // All-day: end = next day
+    // 両方空欄 → 終日予定（翌日の日付を終了に）
     const d    = date.replace(/-/g, '');
     const next = new Date(`${date}T00:00:00`);
     next.setDate(next.getDate() + 1);
@@ -926,6 +963,14 @@ function buildGCalURL({ category, title, date, time, location, memo }) {
   if (details)  url += `&details=${encodeURIComponent(details)}`;
   if (location) url += `&location=${encodeURIComponent(location)}`;
   return url;
+}
+
+/* 時刻範囲の表示文字列を生成（後方互換: 旧データの .time フィールドも考慮） */
+function fmtTimeRange(ev) {
+  const s = ev.timeStart || ev.time || '';
+  const e = ev.timeEnd   || '';
+  if (!s) return '';
+  return e ? `${s}〜${e}` : s;
 }
 
 function fmtGCal(d) {
