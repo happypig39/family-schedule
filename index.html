@@ -635,8 +635,22 @@
       .remind-legend { flex-direction: row; flex-wrap: wrap; }
     }
   </style>
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
+
+<!-- Network error banner -->
+<div id="network-error" style="
+  display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+  background:#d32f2f; color:#fff; padding:10px 18px; border-radius:8px;
+  font-size:13px; font-weight:600; z-index:9999; gap:10px; align-items:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.3); white-space:nowrap;">
+  ⚠️ Firestoreへの接続に失敗しました
+  <button onclick="this.parentElement.style.display='none'"
+    style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px;">✕</button>
+</div>
 
 <!-- Header -->
 <header class="app-header">
@@ -886,29 +900,49 @@ const CATS = {
   miyu:   { label: 'みゆ',   bg: '#EEEDFE', color: '#3C3489', dot: '#7c4dff', gcalColor: '紫（グレープ）'    },
 };
 
-const WEEKDAYS  = ['日','月','火','水','木','金','土'];
-const STORAGE_KEY = 'fam-sched-v1';
+const WEEKDAYS = ['日','月','火','水','木','金','土'];
 
 /* =====================================================
-   STORAGE
+   FIREBASE CONFIG & FIRESTORE
 ===================================================== */
-function loadEvents() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
-  catch { return []; }
+const firebaseConfig = {
+  apiKey:            'AIzaSyBDsPssinePigwef6LZVc_yO-13ByIh6HM',
+  authDomain:        'family-schedule-17e11.firebaseapp.com',
+  projectId:         'family-schedule-17e11',
+  storageBucket:     'family-schedule-17e11.firebasestorage.app',
+  messagingSenderId: '667728323425',
+  appId:             '1:667728323425:web:2da18830e2dafb82bbdb20',
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// オフライン永続化（タブ複数起動時はスキップ）
+db.enablePersistence({ synchronizeTabs: true })
+  .catch(err => {
+    if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
+      console.warn('Firestore persistence:', err);
+    }
+  });
+
+/* =====================================================
+   IN-MEMORY CACHE（onSnapshot でリアルタイム同期）
+===================================================== */
+let eventsCache = [];   // Firestore "events" コレクション
+let tasksCache  = [];   // Firestore "tasks"  コレクション
+
+/* Firestore からキャッシュを返す（既存コードと互換） */
+function loadEvents() { return eventsCache; }
+function loadTasks()  { return tasksCache;  }
+
+/* ===== events CRUD ===== */
+async function addEvent(ev) {
+  await db.collection('events').add({
+    ...ev,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
 }
-function saveEvents(events) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
-}
-function addEvent(ev) {
-  const events = loadEvents();
-  ev.id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
-  events.push(ev);
-  saveEvents(events);
-}
-function deleteEvent(id) {
-  saveEvents(loadEvents().filter(e => e.id !== id));
-  renderTab0();
-  renderAllEventList();
+async function deleteEvent(id) {
+  await db.collection('events').doc(id).delete();
 }
 
 /* =====================================================
@@ -983,8 +1017,40 @@ function init() {
   // Default form date
   document.getElementById('f-date').value = todayStr();
 
-  renderTab0();
-  renderTaskPool();
+  /* ── Firestore リアルタイムリスナー ─────────────────── */
+
+  // events コレクション：予定データをリアルタイム同期
+  db.collection('events')
+    .onSnapshot(
+      snapshot => {
+        eventsCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderTab0();
+        if (eventListOpen) renderAllEventList();
+      },
+      err => {
+        console.error('Firestore(events)エラー:', err);
+        showNetworkError();
+      }
+    );
+
+  // tasks コレクション：タスクプールをリアルタイム同期
+  db.collection('tasks')
+    .onSnapshot(
+      snapshot => {
+        tasksCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderTaskPool();
+        renderTomorrowTasks();
+      },
+      err => {
+        console.error('Firestore(tasks)エラー:', err);
+        showNetworkError();
+      }
+    );
+}
+
+function showNetworkError() {
+  const banner = document.getElementById('network-error');
+  if (banner) banner.style.display = 'flex';
 }
 
 /* =====================================================
@@ -1112,7 +1178,7 @@ function confirmDelete(id) {
 /* =====================================================
    TAB 1: GENERATE
 ===================================================== */
-function generateEvent() {
+async function generateEvent() {
   const category   = document.getElementById('f-category').value;
   const title      = document.getElementById('f-title').value.trim();
   const date       = document.getElementById('f-date').value;
@@ -1125,20 +1191,34 @@ function generateEvent() {
   if (!title) { alert('タイトルを入力してください'); return; }
   if (!date)  { alert('日付を選択してください'); return; }
 
-  // Save locally
-  addEvent({ category, title, date, timeStart, timeEnd, location, memo, remindDays });
+  // ── ボタンを保存中状態に ──
+  const btn = document.querySelector('#tab1 .btn-primary');
+  const origText = btn.textContent;
+  btn.textContent = '保存中...';
+  btn.disabled = true;
+
+  try {
+    // Firestore に保存
+    await addEvent({ category, title, date, timeStart, timeEnd, location, memo, remindDays });
+  } catch (err) {
+    btn.textContent = origText;
+    btn.disabled = false;
+    alert('保存に失敗しました。ネットワーク接続を確認してください。\n' + err.message);
+    return;
+  }
+
+  btn.textContent = origText;
+  btn.disabled = false;
 
   // Build Google Calendar URL
   const url = buildGCalURL({ category, title, date, timeStart, timeEnd, location, memo });
-
-  // Time display string for result card
   const timeDisplay = fmtTimeRange({ timeStart, timeEnd });
 
   const result = document.getElementById('gcal-result');
   result.style.display = 'block';
   result.innerHTML = `
     <div class="gcal-result-box">
-      <div class="res-label">✅ アプリへの保存が完了しました</div>
+      <div class="res-label">✅ Firestoreへの保存が完了しました</div>
       <div class="res-title">
         ${badge(category)}
         <span>${esc(title)}</span>
@@ -1160,8 +1240,7 @@ function generateEvent() {
   document.getElementById('f-location').value   = '';
   document.getElementById('f-memo').value       = '';
   document.getElementById('f-date').value       = todayStr();
-
-  renderTab0();
+  // renderTab0() は onSnapshot で自動更新
 }
 
 function buildGCalURL({ category, title, date, timeStart, timeEnd, location, memo }) {
@@ -1272,54 +1351,51 @@ function renderTomorrowTasks() {
 /* onTomorrowCheck は削除（予定を追加から明日やること機能を廃止） */
 
 /* =====================================================
-   タスクプール（tab2）
+   タスクプール（tab2）※ tasks CRUD は Firestore
 ===================================================== */
-const TASK_KEY = 'fam-tasks-v1';
 
-function loadTasks() {
-  try { return JSON.parse(localStorage.getItem(TASK_KEY) || '[]'); }
-  catch { return []; }
-}
-function saveTasks(tasks) {
-  localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
-}
-
-function addTaskItem() {
+async function addTaskItem() {
   const category = document.getElementById('t-category').value;
   const title    = document.getElementById('t-title').value.trim();
   const memo     = document.getElementById('t-memo').value.trim();
 
   if (!title) { alert('タスク名を入力してください'); return; }
 
-  const tasks = loadTasks();
-  tasks.push({
-    id:          Date.now().toString() + Math.random().toString(36).slice(2, 6),
-    category, title, memo,
-    tomorrowFlag: false,
-    createdAt:   new Date().toISOString(),
-  });
-  saveTasks(tasks);
-
-  document.getElementById('t-title').value = '';
-  document.getElementById('t-memo').value  = '';
-  renderTaskPool();
-}
-
-function deleteTask(id) {
-  if (confirm('このタスクを削除しますか？\n（この操作は取り消せません）')) {
-    saveTasks(loadTasks().filter(t => t.id !== id));
-    renderTaskPool();
-    renderTomorrowTasks();
+  try {
+    await db.collection('tasks').add({
+      category, title, memo,
+      tomorrowFlag: false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    document.getElementById('t-title').value = '';
+    document.getElementById('t-memo').value  = '';
+    // renderTaskPool() は onSnapshot で自動更新
+  } catch (err) {
+    alert('タスクの保存に失敗しました。\n' + err.message);
   }
 }
 
-function toggleTaskTomorrow(id) {
-  const tasks = loadTasks().map(t =>
-    t.id === id ? { ...t, tomorrowFlag: !t.tomorrowFlag } : t
-  );
-  saveTasks(tasks);
-  renderTaskPool();
-  renderTomorrowTasks();
+async function deleteTask(id) {
+  if (!confirm('このタスクを削除しますか？\n（この操作は取り消せません）')) return;
+  try {
+    await db.collection('tasks').doc(id).delete();
+    // renderTaskPool() / renderTomorrowTasks() は onSnapshot で自動更新
+  } catch (err) {
+    alert('削除に失敗しました。\n' + err.message);
+  }
+}
+
+async function toggleTaskTomorrow(id) {
+  const task = tasksCache.find(t => t.id === id);
+  if (!task) return;
+  try {
+    await db.collection('tasks').doc(id).update({
+      tomorrowFlag: !task.tomorrowFlag,
+    });
+    // onSnapshot で自動更新
+  } catch (err) {
+    alert('更新に失敗しました。\n' + err.message);
+  }
 }
 
 function toggleCalForm(id) {
@@ -1347,8 +1423,10 @@ function genTaskCalUrl(id) {
 }
 
 function renderTaskPool() {
+  // Firestore Timestamp（.seconds）と文字列両方に対応
+  const toSec = t => t?.seconds ?? (t ? new Date(t).getTime() / 1000 : 0);
   const tasks = loadTasks()
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort((a, b) => toSec(b.createdAt) - toSec(a.createdAt));
   const el = document.getElementById('taskList');
   if (!el) return;
 
