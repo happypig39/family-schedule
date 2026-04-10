@@ -568,6 +568,25 @@
       transition: all .15s;
     }
     .btn-cal:hover { background: #ceead6; border-color: #137333; }
+    .btn-tomorrow {
+      background: none;
+      border: 1px solid #dadce0;
+      color: #5f6368;
+      padding: 4px 9px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all .15s;
+    }
+    .btn-tomorrow:hover { background: #f8f9fa; border-color: #bdc1c6; }
+    .btn-tomorrow.flagged {
+      background: #fff8e1;
+      border-color: #f9a825;
+      color: #e65100;
+    }
+    .btn-tomorrow.flagged:hover { background: #fff3e0; }
     .task-cal-form {
       display: none;
       margin-top: 12px;
@@ -648,9 +667,15 @@
     <div id="remindList"></div>
   </div>
 
-  <!-- Tomorrow todos -->
+  <!-- Tomorrow flagged tasks from タスク管理 -->
   <div class="section">
-    <div class="section-title">&#127773; 明日やること</div>
+    <div class="section-title">&#127749; 明日やること</div>
+    <div id="tomorrowTaskList"></div>
+  </div>
+
+  <!-- Today all-day todos -->
+  <div class="section">
+    <div class="section-title">&#9989; 今日やること</div>
     <div id="tomorrowList"></div>
   </div>
 
@@ -695,16 +720,8 @@
   </div>
 
   <div class="form-group">
-    <div class="date-tomorrow-row">
-      <div>
-        <label class="form-label" for="f-date">日付<span class="req">*</span></label>
-        <input type="date" id="f-date">
-      </div>
-      <label class="tomorrow-label" id="tomorrowLabel" for="f-tomorrow">
-        <input type="checkbox" id="f-tomorrow" onchange="onTomorrowCheck(this)">
-        明日やること
-      </label>
-    </div>
+    <label class="form-label" for="f-date">日付<span class="req">*</span></label>
+    <input type="date" id="f-date">
   </div>
 
   <div class="form-group">
@@ -975,8 +992,9 @@ function init() {
 ===================================================== */
 function renderTab0() {
   renderReminders();
-  renderTomorrowList();
-  renderTodayList();
+  renderTomorrowTasks();  // タスク管理の「明日フラグ」付きタスク
+  renderTodayTodos();     // 今日の時刻なし予定
+  renderTodayList();      // 今日のスケジュール（時刻あり）
 }
 
 function renderReminders() {
@@ -1141,13 +1159,7 @@ function generateEvent() {
   document.getElementById('f-time-end').value   = '';
   document.getElementById('f-location').value   = '';
   document.getElementById('f-memo').value       = '';
-  // 明日チェックボックスをリセット
-  const tomorrowCb = document.getElementById('f-tomorrow');
-  if (tomorrowCb && tomorrowCb.checked) {
-    tomorrowCb.checked = false;
-    onTomorrowCheck(tomorrowCb);
-  }
-  document.getElementById('f-date').value = todayStr();
+  document.getElementById('f-date').value       = todayStr();
 
   renderTab0();
 }
@@ -1211,19 +1223,19 @@ function switchTab(idx) {
 }
 
 /* =====================================================
-   明日やること（tab0 セクション）
+   今日やること（tab0：今日の時刻なし予定）
 ===================================================== */
-function renderTomorrowList() {
-  const tomorrow = tomorrowStr();
+function renderTodayTodos() {
+  const today = todayStr();
   const evs = loadEvents()
-    .filter(ev => ev.date === tomorrow && !ev.timeStart && !ev.time)
+    .filter(ev => ev.date === today && !ev.timeStart && !ev.time)
     .sort((a, b) => a.title.localeCompare(b.title));
 
-  const el = document.getElementById('tomorrowList');
+  const el = document.getElementById('tomorrowList'); // DOMのIDはそのまま流用
   if (!el) return;
 
   if (!evs.length) {
-    el.innerHTML = '<div class="empty-state">明日やることは登録されていません</div>';
+    el.innerHTML = '<div class="empty-state">今日やることは登録されていません<br><small style="margin-top:4px;display:block;">時刻なしで「予定を追加」すると表示されます</small></div>';
     return;
   }
 
@@ -1236,21 +1248,28 @@ function renderTomorrowList() {
 }
 
 /* =====================================================
-   明日やることチェックボックス（tab1 フォーム）
+   明日やること（tab0：タスク管理の明日フラグ）
 ===================================================== */
-function onTomorrowCheck(cb) {
-  const label   = document.getElementById('tomorrowLabel');
-  const dateInp = document.getElementById('f-date');
-  if (cb.checked) {
-    dateInp.value    = tomorrowStr();
-    dateInp.readOnly = true;
-    label.classList.add('is-checked');
-  } else {
-    dateInp.readOnly = false;
-    dateInp.value    = todayStr();
-    label.classList.remove('is-checked');
+function renderTomorrowTasks() {
+  const tasks = loadTasks().filter(t => t.tomorrowFlag);
+
+  const el = document.getElementById('tomorrowTaskList');
+  if (!el) return;
+
+  if (!tasks.length) {
+    el.innerHTML = '<div class="empty-state">「タスク管理」で🌅ボタンを押すと表示されます</div>';
+    return;
   }
+
+  el.innerHTML = tasks.map(t => `
+    <div class="tomorrow-card">
+      ${badge(t.category)}
+      <span class="tomorrow-card-title">${esc(t.title)}</span>
+      ${t.memo ? `<div class="tomorrow-card-memo">📝 ${esc(t.memo)}</div>` : ''}
+    </div>`).join('');
 }
+
+/* onTomorrowCheck は削除（予定を追加から明日やること機能を廃止） */
 
 /* =====================================================
    タスクプール（tab2）
@@ -1274,9 +1293,10 @@ function addTaskItem() {
 
   const tasks = loadTasks();
   tasks.push({
-    id:        Date.now().toString() + Math.random().toString(36).slice(2, 6),
+    id:          Date.now().toString() + Math.random().toString(36).slice(2, 6),
     category, title, memo,
-    createdAt: new Date().toISOString(),
+    tomorrowFlag: false,
+    createdAt:   new Date().toISOString(),
   });
   saveTasks(tasks);
 
@@ -1289,7 +1309,17 @@ function deleteTask(id) {
   if (confirm('このタスクを削除しますか？\n（この操作は取り消せません）')) {
     saveTasks(loadTasks().filter(t => t.id !== id));
     renderTaskPool();
+    renderTomorrowTasks();
   }
+}
+
+function toggleTaskTomorrow(id) {
+  const tasks = loadTasks().map(t =>
+    t.id === id ? { ...t, tomorrowFlag: !t.tomorrowFlag } : t
+  );
+  saveTasks(tasks);
+  renderTaskPool();
+  renderTomorrowTasks();
 }
 
 function toggleCalForm(id) {
@@ -1340,6 +1370,9 @@ function renderTaskPool() {
             ${t.memo ? `<div class="card-meta">📝 ${esc(t.memo)}</div>` : ''}
           </div>
           <div class="task-btns">
+            <button class="btn-tomorrow ${t.tomorrowFlag ? 'flagged' : ''}" onclick="toggleTaskTomorrow('${safeId}')">
+              ${t.tomorrowFlag ? '🌅 明日予定' : '🌅 明日にする'}
+            </button>
             <button class="btn-cal" onclick="toggleCalForm('${safeId}')">📅 カレンダーへ</button>
             <button class="btn-delete" onclick="deleteTask('${safeId}')">削除</button>
           </div>
