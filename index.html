@@ -457,6 +457,158 @@
       gap: 10px;
     }
 
+    /* ── Input readonly ──────────────────────── */
+    input[readonly] {
+      background: #f8f9fa !important;
+      color: #9aa0a6 !important;
+      cursor: not-allowed;
+    }
+
+    /* ── 日付 + 明日やること 横並び行 ──────── */
+    .date-tomorrow-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .date-tomorrow-row > :first-child { flex: 1; }
+    .tomorrow-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 11px;
+      border: 1.5px solid #dadce0;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 700;
+      color: #5f6368;
+      height: 42px;
+      transition: border-color .15s, background .15s, color .15s;
+      user-select: none;
+    }
+    .tomorrow-label input[type=checkbox] {
+      width: 15px; height: 15px;
+      accent-color: #1a73e8;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .tomorrow-label.is-checked {
+      border-color: #1a73e8;
+      background: #e8f0fe;
+      color: #1a73e8;
+    }
+
+    /* ── 明日やることカード（tab0）──────────── */
+    .tomorrow-card {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      background: #fff;
+      border-radius: 10px;
+      padding: 11px 13px;
+      margin-bottom: 7px;
+      border: 1px solid #e8eaed;
+      border-left: 3px solid #34a853;
+      box-shadow: var(--shadow);
+    }
+    .tomorrow-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #202124;
+    }
+    .tomorrow-card-memo {
+      width: 100%;
+      font-size: 12px;
+      color: #5f6368;
+      margin-top: 1px;
+    }
+
+    /* ── タスクプール ─────────────────────────── */
+    .task-item {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 13px 14px;
+      margin-bottom: 9px;
+      border: 1px solid #e8eaed;
+      box-shadow: var(--shadow);
+    }
+    .task-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .task-info { flex: 1; min-width: 0; }
+    .task-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #202124;
+      margin-bottom: 3px;
+    }
+    .task-btns {
+      display: flex;
+      gap: 5px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .btn-cal {
+      background: #e6f4ea;
+      border: 1px solid #a8d5b5;
+      color: #137333;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all .15s;
+    }
+    .btn-cal:hover { background: #ceead6; border-color: #137333; }
+    .task-cal-form {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      background: #f8f9fb;
+      border-radius: 9px;
+      border: 1px solid #e8eaed;
+    }
+    .task-cal-form.open { display: block; }
+    .task-cal-form .form-group { margin-bottom: 10px; }
+    .btn-gen-url {
+      width: 100%;
+      padding: 9px;
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-gen-url:hover { background: #1557b0; }
+    .task-gcal-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 9px 12px;
+      background: #e8f0fe;
+      color: #1a73e8;
+      text-decoration: none;
+      border-radius: 7px;
+      font-weight: 700;
+      font-size: 13px;
+      margin-top: 8px;
+      border: 1.5px solid #a8c7fa;
+      transition: background .15s;
+    }
+    .task-gcal-link:hover { background: #d2e3fc; }
+
     /* ── Responsive ──────────────────────────── */
     @media (min-width: 540px) {
       .cat-color-row { flex-direction: row; flex-wrap: wrap; }
@@ -477,7 +629,8 @@
 <nav class="tabs" role="tablist">
   <button class="tab-btn active" role="tab" onclick="switchTab(0)">今日の確認</button>
   <button class="tab-btn" role="tab" onclick="switchTab(1)">予定を追加</button>
-  <button class="tab-btn" role="tab" onclick="switchTab(2)">使い方</button>
+  <button class="tab-btn" role="tab" onclick="switchTab(2)">タスク管理</button>
+  <button class="tab-btn" role="tab" onclick="switchTab(3)">使い方</button>
 </nav>
 
 <!-- ===== Tab 0: 今日の確認 ===== -->
@@ -493,6 +646,12 @@
   <div class="section" id="remindSection">
     <div class="section-title">要準備・リマインド</div>
     <div id="remindList"></div>
+  </div>
+
+  <!-- Tomorrow todos -->
+  <div class="section">
+    <div class="section-title">&#127773; 明日やること</div>
+    <div id="tomorrowList"></div>
   </div>
 
   <!-- Today schedule -->
@@ -536,8 +695,16 @@
   </div>
 
   <div class="form-group">
-    <label class="form-label" for="f-date">日付<span class="req">*</span></label>
-    <input type="date" id="f-date">
+    <div class="date-tomorrow-row">
+      <div>
+        <label class="form-label" for="f-date">日付<span class="req">*</span></label>
+        <input type="date" id="f-date">
+      </div>
+      <label class="tomorrow-label" id="tomorrowLabel" for="f-tomorrow">
+        <input type="checkbox" id="f-tomorrow" onchange="onTomorrowCheck(this)">
+        明日やること
+      </label>
+    </div>
   </div>
 
   <div class="form-group">
@@ -579,8 +746,49 @@
   <div id="gcal-result" style="display:none;"></div>
 </div>
 
-<!-- ===== Tab 2: 使い方 ===== -->
+<!-- ===== Tab 2: タスク管理 ===== -->
 <div class="tab-content" id="tab2" role="tabpanel">
+
+  <!-- タスク追加フォーム -->
+  <div class="section">
+    <div class="section-title">タスクを追加</div>
+
+    <div class="form-group">
+      <label class="form-label" for="t-category">カテゴリ</label>
+      <select id="t-category">
+        <option value="work">&#128188; 仕事</option>
+        <option value="family">&#127968; 家庭</option>
+        <option value="hitomi">&#127774; ひとみ</option>
+        <option value="koharu">&#127800; こはる</option>
+        <option value="miyu">&#10024; みゆ</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="t-title">タスク名<span class="req">*</span></label>
+      <input type="text" id="t-title" placeholder="例：書類を準備する、連絡する">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="t-memo">メモ（任意）</label>
+      <textarea id="t-memo" placeholder="詳細・備考など" style="min-height:64px;"></textarea>
+    </div>
+
+    <button class="btn-primary" onclick="addTaskItem()">タスクを登録</button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- タスク一覧 -->
+  <div class="section">
+    <div class="section-title">タスク一覧</div>
+    <div id="taskList"></div>
+  </div>
+
+</div>
+
+<!-- ===== Tab 3: 使い方 ===== -->
+<div class="tab-content" id="tab3" role="tabpanel">
 
   <div class="section">
     <div class="section-title">Googleカレンダー連携手順</div>
@@ -693,6 +901,11 @@ function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
+function tomorrowStr() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function pad(n) { return String(n).padStart(2, '0'); }
 
 function daysDiff(dateStr) {
@@ -754,6 +967,7 @@ function init() {
   document.getElementById('f-date').value = todayStr();
 
   renderTab0();
+  renderTaskPool();
 }
 
 /* =====================================================
@@ -761,6 +975,7 @@ function init() {
 ===================================================== */
 function renderTab0() {
   renderReminders();
+  renderTomorrowList();
   renderTodayList();
 }
 
@@ -920,12 +1135,19 @@ function generateEvent() {
       </a>
     </div>`;
 
-  // Reset form fields (keep category, date, remind)
+  // Reset form fields (keep category, remind)
   document.getElementById('f-title').value      = '';
   document.getElementById('f-time-start').value = '';
   document.getElementById('f-time-end').value   = '';
   document.getElementById('f-location').value   = '';
   document.getElementById('f-memo').value       = '';
+  // 明日チェックボックスをリセット
+  const tomorrowCb = document.getElementById('f-tomorrow');
+  if (tomorrowCb && tomorrowCb.checked) {
+    tomorrowCb.checked = false;
+    onTomorrowCheck(tomorrowCb);
+  }
+  document.getElementById('f-date').value = todayStr();
 
   renderTab0();
 }
@@ -985,6 +1207,165 @@ function switchTab(idx) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
   document.querySelectorAll('.tab-content').forEach((c, i) => c.classList.toggle('active', i === idx));
   if (idx === 0) renderTab0();
+  else if (idx === 2) renderTaskPool();
+}
+
+/* =====================================================
+   明日やること（tab0 セクション）
+===================================================== */
+function renderTomorrowList() {
+  const tomorrow = tomorrowStr();
+  const evs = loadEvents()
+    .filter(ev => ev.date === tomorrow && !ev.timeStart && !ev.time)
+    .sort((a, b) => a.title.localeCompare(b.title));
+
+  const el = document.getElementById('tomorrowList');
+  if (!el) return;
+
+  if (!evs.length) {
+    el.innerHTML = '<div class="empty-state">明日やることは登録されていません</div>';
+    return;
+  }
+
+  el.innerHTML = evs.map(ev => `
+    <div class="tomorrow-card">
+      ${badge(ev.category)}
+      <span class="tomorrow-card-title">${esc(ev.title)}</span>
+      ${ev.memo ? `<div class="tomorrow-card-memo">📝 ${esc(ev.memo)}</div>` : ''}
+    </div>`).join('');
+}
+
+/* =====================================================
+   明日やることチェックボックス（tab1 フォーム）
+===================================================== */
+function onTomorrowCheck(cb) {
+  const label   = document.getElementById('tomorrowLabel');
+  const dateInp = document.getElementById('f-date');
+  if (cb.checked) {
+    dateInp.value    = tomorrowStr();
+    dateInp.readOnly = true;
+    label.classList.add('is-checked');
+  } else {
+    dateInp.readOnly = false;
+    dateInp.value    = todayStr();
+    label.classList.remove('is-checked');
+  }
+}
+
+/* =====================================================
+   タスクプール（tab2）
+===================================================== */
+const TASK_KEY = 'fam-tasks-v1';
+
+function loadTasks() {
+  try { return JSON.parse(localStorage.getItem(TASK_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveTasks(tasks) {
+  localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
+}
+
+function addTaskItem() {
+  const category = document.getElementById('t-category').value;
+  const title    = document.getElementById('t-title').value.trim();
+  const memo     = document.getElementById('t-memo').value.trim();
+
+  if (!title) { alert('タスク名を入力してください'); return; }
+
+  const tasks = loadTasks();
+  tasks.push({
+    id:        Date.now().toString() + Math.random().toString(36).slice(2, 6),
+    category, title, memo,
+    createdAt: new Date().toISOString(),
+  });
+  saveTasks(tasks);
+
+  document.getElementById('t-title').value = '';
+  document.getElementById('t-memo').value  = '';
+  renderTaskPool();
+}
+
+function deleteTask(id) {
+  if (confirm('このタスクを削除しますか？\n（この操作は取り消せません）')) {
+    saveTasks(loadTasks().filter(t => t.id !== id));
+    renderTaskPool();
+  }
+}
+
+function toggleCalForm(id) {
+  const form = document.getElementById('tcf-' + id);
+  if (!form) return;
+  form.classList.toggle('open');
+}
+
+function genTaskCalUrl(id) {
+  const task = loadTasks().find(t => t.id === id);
+  if (!task) return;
+
+  const date      = document.getElementById('tdate-' + id).value;
+  const timeStart = document.getElementById('tts-'   + id).value;
+  const timeEnd   = document.getElementById('tte-'   + id).value;
+
+  if (!date) { alert('日付を選択してください'); return; }
+
+  const url    = buildGCalURL({ ...task, date, timeStart, timeEnd, location: '' });
+  const result = document.getElementById('tcr-' + id);
+  result.innerHTML = `
+    <a href="${url}" target="_blank" rel="noopener" class="task-gcal-link">
+      Googleカレンダーで開いて保存する &#8594;
+    </a>`;
+}
+
+function renderTaskPool() {
+  const tasks = loadTasks()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const el = document.getElementById('taskList');
+  if (!el) return;
+
+  if (!tasks.length) {
+    el.innerHTML = '<div class="empty-state">登録されたタスクはありません<br><small style="margin-top:6px;display:block;">「タスクを追加」フォームから日付未定の予定を登録できます</small></div>';
+    return;
+  }
+
+  el.innerHTML = tasks.map(t => {
+    const safeId = esc(t.id);
+    return `
+      <div class="task-item">
+        <div class="task-header">
+          <div class="task-info">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+              ${badge(t.category)}
+              <span class="task-name">${esc(t.title)}</span>
+            </div>
+            ${t.memo ? `<div class="card-meta">📝 ${esc(t.memo)}</div>` : ''}
+          </div>
+          <div class="task-btns">
+            <button class="btn-cal" onclick="toggleCalForm('${safeId}')">📅 カレンダーへ</button>
+            <button class="btn-delete" onclick="deleteTask('${safeId}')">削除</button>
+          </div>
+        </div>
+
+        <!-- インライン日付・時刻フォーム -->
+        <div class="task-cal-form" id="tcf-${safeId}">
+          <div class="form-group">
+            <label class="form-label">日付<span class="req">*</span></label>
+            <input type="date" id="tdate-${safeId}" value="${todayStr()}">
+          </div>
+          <div class="time-row form-group">
+            <div>
+              <label class="form-label">開始時刻（任意）</label>
+              <input type="time" id="tts-${safeId}">
+            </div>
+            <div>
+              <label class="form-label">終了時刻（任意）</label>
+              <input type="time" id="tte-${safeId}">
+            </div>
+          </div>
+          <button class="btn-gen-url" onclick="genTaskCalUrl('${safeId}')">Googleカレンダー用URLを生成</button>
+          <div id="tcr-${safeId}"></div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 /* =====================================================
