@@ -707,7 +707,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <!-- Google Identity Services -->
-  <script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body>
 
@@ -1112,8 +1111,8 @@ function init() {
   // Default form date
   document.getElementById('f-date').value = todayStr();
 
-  // Google Calendar API の初期化（GISライブラリが読み込まれ次第）
-  initGoogleAuth();
+  // Google Calendar API の初期化（リダイレクト方式）
+  handleOAuthRedirect();
 
   /* ── Firestore リアルタイムリスナー ─────────────────── */
 
@@ -1484,59 +1483,121 @@ function renderTomorrowTasks() {
 /* onTomorrowCheck は削除（予定を追加から明日やること機能を廃止） */
 
 /* =====================================================
-   GOOGLE CALENDAR API（OAuth + Calendar v3）
+   GOOGLE CALENDAR API（OAuth 2.0 リダイレクト方式）
 ===================================================== */
-const GCAL_CLIENT_ID = '667728323425-k8om7o87c0055qllqutcs50cgaon9uac.apps.googleusercontent.com';
-const GCAL_SCOPE     = 'https://www.googleapis.com/auth/calendar.readonly';
+const GCAL_CLIENT_ID  = '667728323425-k8om7o87c0055qllqutcs50cgaon9uac.apps.googleusercontent.com';
+const GCAL_SCOPE      = 'https://www.googleapis.com/auth/calendar.readonly';
+const GCAL_REDIRECT   = location.origin + location.pathname;  // このページ自身
 
-let tokenClient      = null;
 let accessToken      = null;
 let gcalEventsCache  = [];   // 今日のGCalイベント
 
-/* GIS トークンクライアントを初期化 */
-function initGoogleAuth() {
-  if (typeof google === 'undefined' || !google.accounts?.oauth2) {
-    // GISライブラリが未ロードなら少し待ってリトライ
-    setTimeout(initGoogleAuth, 400);
-    return;
-  }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GCAL_CLIENT_ID,
-    scope:     GCAL_SCOPE,
-    callback:  onTokenReceived,
-  });
+/* ランダムなstate文字列を生成（CSRF対策） */
+function _randomState() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/* トークン取得コールバック */
-function onTokenReceived(resp) {
-  if (resp.error) {
-    console.error('Google OAuth error:', resp);
-    alert('Googleログインに失敗しました。\nエラー: ' + resp.error);
-    return;
-  }
-  accessToken = resp.access_token;
-  updateGCalUI(true);
-  fetchGoogleCalendarEvents();
+/* セッションストレージからトークンを復元（有効期限チェック付き） */
+function _loadTokenFromSession() {
+  try {
+    const token   = sessionStorage.getItem('gcal_token');
+    const expires = parseInt(sessionStorage.getItem('gcal_expires') || '0', 10);
+    if (token && Date.now() < expires) return token;
+  } catch(_) {}
+  return null;
 }
 
-/* ログインボタン押下 */
+/* セッションストレージにトークンを保存 */
+function _saveTokenToSession(token, expiresInSec) {
+  try {
+    sessionStorage.setItem('gcal_token', token);
+    sessionStorage.setItem('gcal_expires', String(Date.now() + expiresInSec * 1000));
+  } catch(_) {}
+}
+
+/* セッションストレージからトークンを削除 */
+function _clearTokenFromSession() {
+  try {
+    sessionStorage.removeItem('gcal_token');
+    sessionStorage.removeItem('gcal_expires');
+    sessionStorage.removeItem('gcal_oauth_state');
+  } catch(_) {}
+}
+
+/* ページ読み込み時にリダイレクト結果を処理 */
+function handleOAuthRedirect() {
+  // ① まずURLハッシュにトークンが含まれているか確認（リダイレクト戻り）
+  const hash = location.hash;
+  if (hash && hash.includes('access_token')) {
+    const params = new URLSearchParams(hash.replace(/^#/, ''));
+    const token      = params.get('access_token');
+    const expiresIn  = parseInt(params.get('expires_in') || '3600', 10);
+    const returnedState = params.get('state');
+    const savedState    = sessionStorage.getItem('gcal_oauth_state');
+
+    // URLハッシュをきれいに除去（ブラウザ履歴を汚さない）
+    history.replaceState(null, '', location.pathname + location.search);
+
+    if (!token) {
+      console.error('OAuth: access_token が見つかりません');
+      return;
+    }
+    if (returnedState && savedState && returnedState !== savedState) {
+      console.error('OAuth: state不一致（CSRF攻撃の可能性）');
+      alert('認証エラーが発生しました。再度お試しください。');
+      return;
+    }
+
+    // state クリア
+    sessionStorage.removeItem('gcal_oauth_state');
+
+    // トークンを保存してUI更新
+    accessToken = token;
+    _saveTokenToSession(token, expiresIn);
+    updateGCalUI(true);
+    fetchGoogleCalendarEvents();
+    return;
+  }
+
+  // ② セッションストレージに有効なトークンが残っていれば自動復元
+  const savedToken = _loadTokenFromSession();
+  if (savedToken) {
+    accessToken = savedToken;
+    updateGCalUI(true);
+    fetchGoogleCalendarEvents();
+  }
+}
+
+/* ログインボタン押下 → Googleの認証ページへリダイレクト */
 function loginGoogle() {
-  if (!tokenClient) {
-    alert('Google Identity Services の読み込み中です。少し待ってから再度お試しください。');
-    return;
-  }
-  tokenClient.requestAccessToken({ prompt: '' });
+  const state = _randomState();
+  sessionStorage.setItem('gcal_oauth_state', state);
+
+  const params = new URLSearchParams({
+    client_id:     GCAL_CLIENT_ID,
+    redirect_uri:  GCAL_REDIRECT,
+    response_type: 'token',
+    scope:         GCAL_SCOPE,
+    state:         state,
+    include_granted_scopes: 'true',
+  });
+
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 }
 
 /* 接続解除 */
 function logoutGoogle() {
   if (accessToken) {
-    google.accounts.oauth2.revoke(accessToken, () => {
-      console.log('Google token revoked.');
-    });
+    // トークンを非同期で失効（エラーは無視）
+    fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(accessToken), {
+      method: 'POST',
+    }).catch(() => {});
   }
   accessToken     = null;
   gcalEventsCache = [];
+  _clearTokenFromSession();
   updateGCalUI(false);
   renderTodayList();
 }
