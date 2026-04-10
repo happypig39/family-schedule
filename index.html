@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家族スケジュール管理</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --work-bg:   #E6F1FB; --work-color:   #0C447C; --work-dot:   #1a73e8;
+      --family-bg: #EAF3DE; --family-color: #27500A; --family-dot: #34a853;
+      --hitomi-bg: #FAEEDA; --hitomi-color: #633806; --hitomi-dot: #fb8c00;
+      --koharu-bg: #FBEAF0; --koharu-color: #72243E; --koharu-dot: #e91e8c;
+      --miyu-bg:   #EEEDFE; --miyu-color:   #3C3489; --miyu-dot:   #7c4dff;
+      --radius: 12px;
+      --shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN',
+                   'Noto Sans JP', sans-serif;
+      background: #f4f6f9;
+      color: #202124;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ─────────────────────────────── */
+    .app-header {
+      background: #fff;
+      border-bottom: 1px solid #e0e3e8;
+      padding: 12px 16px 10px;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    }
+    .app-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 9px;
+      letter-spacing: -0.3px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .legend-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    /* ── Tabs ────────────────────────────────── */
+    .tabs {
+      display: flex;
+      background: #fff;
+      border-bottom: 2px solid #e0e3e8;
+      position: sticky;
+      top: 63px;
+      z-index: 100;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 11px 6px;
+      border: none;
+      background: none;
+      font-size: 13px;
+      font-weight: 600;
+      color: #5f6368;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color .18s, border-color .18s;
+      letter-spacing: 0.1px;
+    }
+    .tab-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+    .tab-btn:hover:not(.active) { color: #202124; background: #f8f9fa; }
+
+    /* ── Content wrapper ─────────────────────── */
+    .tab-content { display: none; padding: 18px 16px 40px; max-width: 760px; margin: 0 auto; }
+    .tab-content.active { display: block; }
+
+    /* ── Section ─────────────────────────────── */
+    .section { margin-bottom: 26px; }
+    .section-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #80868b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 11px;
+    }
+
+    /* ── Today header ────────────────────────── */
+    .today-date {
+      font-size: 30px;
+      font-weight: 800;
+      color: #202124;
+      line-height: 1.1;
+    }
+    .today-sub {
+      font-size: 13px;
+      color: #80868b;
+      margin-top: 3px;
+      margin-bottom: 4px;
+    }
+
+    /* ── Cards ───────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 13px 15px;
+      margin-bottom: 9px;
+      border: 1px solid #e8eaed;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #202124;
+    }
+    .card-meta {
+      font-size: 12.5px;
+      color: #5f6368;
+      margin-top: 3px;
+    }
+    .card-memo {
+      font-size: 13px;
+      color: #444;
+      background: #f8f9fb;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-top: 9px;
+      line-height: 1.6;
+      border-left: 3px solid #dadce0;
+    }
+    .time-chip {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #1a73e8;
+      background: #e8f0fe;
+      border-radius: 6px;
+      padding: 1px 7px;
+      margin-bottom: 5px;
+    }
+
+    /* ── Reminder cards ──────────────────────── */
+    .remind-card {
+      border-radius: var(--radius);
+      padding: 13px 15px;
+      margin-bottom: 9px;
+      border-left: 4px solid;
+    }
+    .remind-card.urgent  { background: #fff5f5; border-left-color: #d32f2f; }
+    .remind-card.warning { background: #fffbf0; border-left-color: #f57c00; }
+    .remind-label {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 5px;
+    }
+    .remind-card.urgent .remind-label  { color: #d32f2f; }
+    .remind-card.warning .remind-label { color: #f57c00; }
+
+    /* ── Badge ───────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    /* ── Divider ─────────────────────────────── */
+    .divider { height: 1px; background: #e8eaed; margin: 22px 0; }
+
+    /* ── Form ────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #5f6368;
+      margin-bottom: 6px;
+    }
+    .req { color: #d93025; margin-left: 2px; }
+    input[type=text], input[type=date], input[type=time], select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #dadce0;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #202124;
+      background: #fff;
+      outline: none;
+      transition: border-color .18s, box-shadow .18s;
+      font-family: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 3px rgba(26,115,232,.12);
+    }
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%235f6368'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+    textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .18s, transform .1s;
+      letter-spacing: 0.2px;
+    }
+    .btn-primary:hover  { background: #1557b0; }
+    .btn-primary:active { transform: scale(.98); }
+
+    /* ── GCal link ───────────────────────────── */
+    .gcal-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 13px 16px;
+      background: #e8f0fe;
+      color: #1a73e8;
+      text-decoration: none;
+      border-radius: 9px;
+      font-weight: 700;
+      font-size: 14.5px;
+      margin-top: 12px;
+      border: 1.5px solid #a8c7fa;
+      transition: background .18s;
+    }
+    .gcal-link:hover { background: #d2e3fc; }
+
+    .gcal-result-box {
+      background: #f0f7ff;
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid #c5d9f7;
+      margin-top: 18px;
+    }
+    .gcal-result-box .res-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #188038;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .gcal-result-box .res-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .gcal-result-box .res-meta {
+      font-size: 13px;
+      color: #5f6368;
+      margin-bottom: 3px;
+    }
+
+    /* ── Empty state ─────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 28px 16px;
+      color: #9aa0a6;
+      font-size: 13.5px;
+      background: #fff;
+      border-radius: var(--radius);
+      border: 1px dashed #dadce0;
+    }
+
+    /* ── Event list ──────────────────────────── */
+    .event-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      background: #fff;
+      border-radius: 10px;
+      padding: 11px 13px;
+      margin-bottom: 7px;
+      border: 1px solid #e8eaed;
+      box-shadow: var(--shadow);
+      gap: 10px;
+    }
+    .event-info { flex: 1; min-width: 0; }
+    .event-name {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .event-date { font-size: 12px; color: #5f6368; margin-top: 3px; }
+    .btn-delete {
+      background: none;
+      border: 1px solid #dadce0;
+      color: #d93025;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all .15s;
+    }
+    .btn-delete:hover { background: #fce8e6; border-color: #d93025; }
+
+    .collapse-toggle {
+      background: none;
+      border: 1.5px solid #dadce0;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #5f6368;
+      cursor: pointer;
+      display: block;
+      width: 100%;
+      text-align: center;
+      margin-bottom: 10px;
+      transition: background .15s, border-color .15s;
+    }
+    .collapse-toggle:hover { background: #f8f9fa; border-color: #bdc1c6; }
+
+    /* ── Guide ───────────────────────────────── */
+    .guide-box {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+      border: 1px solid #e8eaed;
+      box-shadow: var(--shadow);
+    }
+    .guide-box h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #202124;
+      margin-bottom: 12px;
+    }
+    .guide-step {
+      display: flex;
+      gap: 13px;
+      margin-bottom: 16px;
+      align-items: flex-start;
+    }
+    .guide-step:last-child { margin-bottom: 0; }
+    .step-num {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      background: #1a73e8;
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-content h3 { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+    .step-content p  { font-size: 13px; color: #5f6368; line-height: 1.65; }
+    .cat-color-row {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .cat-color-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .cat-dot {
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .info-text {
+      font-size: 13px;
+      color: #444;
+      line-height: 1.75;
+    }
+    .info-text strong { color: #202124; }
+    .remind-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .remind-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .remind-dot {
+      width: 13px; height: 13px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* ── gcal top link ───────────────────────── */
+    .gcal-top-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 11px;
+      background: #fff;
+      color: #1a73e8;
+      text-decoration: none;
+      border-radius: 9px;
+      font-weight: 600;
+      font-size: 13.5px;
+      border: 1.5px solid #a8c7fa;
+      transition: background .15s;
+      margin-top: 8px;
+    }
+    .gcal-top-link:hover { background: #e8f0fe; }
+
+    /* ── Responsive ──────────────────────────── */
+    @media (min-width: 540px) {
+      .cat-color-row { flex-direction: row; flex-wrap: wrap; }
+      .cat-color-item { min-width: 160px; }
+      .remind-legend { flex-direction: row; flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="app-title">&#128197; 家族スケジュール</div>
+  <div class="legend" id="legend"></div>
+</header>
+
+<!-- Tabs -->
+<nav class="tabs" role="tablist">
+  <button class="tab-btn active" role="tab" onclick="switchTab(0)">今日の確認</button>
+  <button class="tab-btn" role="tab" onclick="switchTab(1)">予定を追加</button>
+  <button class="tab-btn" role="tab" onclick="switchTab(2)">使い方</button>
+</nav>
+
+<!-- ===== Tab 0: 今日の確認 ===== -->
+<div class="tab-content active" id="tab0" role="tabpanel">
+
+  <!-- Date -->
+  <div class="section">
+    <div class="today-date" id="todayDate"></div>
+    <div class="today-sub" id="todayWeekday"></div>
+  </div>
+
+  <!-- Reminders -->
+  <div class="section" id="remindSection">
+    <div class="section-title">要準備・リマインド</div>
+    <div id="remindList"></div>
+  </div>
+
+  <!-- Today schedule -->
+  <div class="section">
+    <div class="section-title">今日のスケジュール</div>
+    <div id="todayList"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- All events collapsible -->
+  <div class="section">
+    <button class="collapse-toggle" id="collapseBtn" onclick="toggleEventList()">
+      登録済み予定一覧 &#9660;
+    </button>
+    <div id="allEventList" style="display:none;"></div>
+  </div>
+
+  <a href="https://calendar.google.com/calendar" target="_blank" class="gcal-top-link">
+    Googleカレンダーで詳細を確認 &#8594;
+  </a>
+</div>
+
+<!-- ===== Tab 1: 予定を追加 ===== -->
+<div class="tab-content" id="tab1" role="tabpanel">
+
+  <div class="form-group">
+    <label class="form-label" for="f-category">カテゴリ</label>
+    <select id="f-category">
+      <option value="work">&#128188; 仕事</option>
+      <option value="family">&#127968; 家庭</option>
+      <option value="hitomi">&#127774; ひとみ</option>
+      <option value="koharu">&#127800; こはる</option>
+      <option value="miyu">&#10024; みゆ</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="f-title">タイトル<span class="req">*</span></label>
+    <input type="text" id="f-title" placeholder="例：健康診断、運動会など">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="f-date">日付<span class="req">*</span></label>
+    <input type="date" id="f-date">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="f-time">時刻（任意）</label>
+    <input type="time" id="f-time">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="f-location">場所（任意）</label>
+    <input type="text" id="f-location" placeholder="例：○○小学校、駅前クリニック">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="f-memo">事前準備メモ（任意）</label>
+    <textarea id="f-memo" placeholder="例：弁当を作る&#10;持ち物：水筒・タオル&#10;前日に服を用意する"></textarea>
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="f-remind">リマインドタイミング</label>
+    <select id="f-remind">
+      <option value="0">当日のみ</option>
+      <option value="1">1日前から</option>
+      <option value="3" selected>3日前から</option>
+      <option value="5">5日前から</option>
+      <option value="7">1週間前から</option>
+    </select>
+  </div>
+
+  <button class="btn-primary" onclick="generateEvent()">Googleカレンダー用リンクを生成</button>
+
+  <div id="gcal-result" style="display:none;"></div>
+</div>
+
+<!-- ===== Tab 2: 使い方 ===== -->
+<div class="tab-content" id="tab2" role="tabpanel">
+
+  <div class="section">
+    <div class="section-title">Googleカレンダー連携手順</div>
+    <div class="guide-box">
+      <div class="guide-step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h3>予定を入力する</h3>
+          <p>「予定を追加」タブでカテゴリ・タイトル・日付などの情報を入力します。</p>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h3>リンクを生成する</h3>
+          <p>「Googleカレンダー用リンクを生成」ボタンを押すと、入力内容がアプリに保存され、下にリンクが表示されます。</p>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h3>Googleカレンダーで開く</h3>
+          <p>「Googleカレンダーで開いて保存する →」をタップすると、予定が入力済みの状態でGoogleカレンダーが開きます。</p>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h3>保存する</h3>
+          <p>Googleカレンダーの「保存」ボタンを押せば登録完了です。Googleアカウントのカレンダーに予定が追加されます。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">リマインドの仕組み</div>
+    <div class="guide-box">
+      <p class="info-text">
+        予定追加時に設定したリマインドタイミングに基づいて、<strong>「今日の確認」タブの上部</strong>に要準備カードが自動表示されます。<br><br>
+        例：「3日前から」を選んだ場合、イベント3日前から当日まで毎日アプリを開くたびにリマインドカードが表示されます。
+      </p>
+      <div class="remind-legend">
+        <div class="remind-legend-item">
+          <div class="remind-dot" style="background:#d32f2f;"></div>
+          <span><strong style="color:#d32f2f;">赤カード</strong>：当日・翌日（緊急）</span>
+        </div>
+        <div class="remind-legend-item">
+          <div class="remind-dot" style="background:#f57c00;"></div>
+          <span><strong style="color:#f57c00;">オレンジカード</strong>：2〜7日以内（注意）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Googleカレンダー推奨色設定</div>
+    <div class="guide-box">
+      <h3>カテゴリ別おすすめ色</h3>
+      <div class="cat-color-row" id="guideColors"></div>
+      <p style="font-size:12px;color:#9aa0a6;margin-top:14px;">
+        ※ Googleカレンダーの各予定を開き、タイトル横の色丸から変更できます。
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================
+   DATA
+===================================================== */
+const CATS = {
+  work:   { label: '仕事',   bg: '#E6F1FB', color: '#0C447C', dot: '#1a73e8', gcalColor: '青（ピーコック）' },
+  family: { label: '家庭',   bg: '#EAF3DE', color: '#27500A', dot: '#34a853', gcalColor: '緑（セージ）'      },
+  hitomi: { label: 'ひとみ', bg: '#FAEEDA', color: '#633806', dot: '#fb8c00', gcalColor: 'オレンジ（マンダリン）' },
+  koharu: { label: 'こはる', bg: '#FBEAF0', color: '#72243E', dot: '#e91e8c', gcalColor: 'ピンク（フラミンゴ）' },
+  miyu:   { label: 'みゆ',   bg: '#EEEDFE', color: '#3C3489', dot: '#7c4dff', gcalColor: '紫（グレープ）'    },
+};
+
+const WEEKDAYS  = ['日','月','火','水','木','金','土'];
+const STORAGE_KEY = 'fam-sched-v1';
+
+/* =====================================================
+   STORAGE
+===================================================== */
+function loadEvents() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveEvents(events) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+}
+function addEvent(ev) {
+  const events = loadEvents();
+  ev.id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
+  events.push(ev);
+  saveEvents(events);
+}
+function deleteEvent(id) {
+  saveEvents(loadEvents().filter(e => e.id !== id));
+  renderTab0();
+  renderAllEventList();
+}
+
+/* =====================================================
+   DATE UTILS
+===================================================== */
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function daysDiff(dateStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dateStr + 'T00:00:00');
+  return Math.round((target - today) / 86400000);
+}
+
+function fmtDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${d.getMonth()+1}月${d.getDate()}日（${WEEKDAYS[d.getDay()]}）`;
+}
+
+/* =====================================================
+   SECURITY
+===================================================== */
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+/* =====================================================
+   BADGE
+===================================================== */
+function badge(cat) {
+  const c = CATS[cat] || CATS.family;
+  return `<span class="badge" style="background:${c.bg};color:${c.color};">${c.label}</span>`;
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+function init() {
+  // Legend
+  document.getElementById('legend').innerHTML =
+    Object.entries(CATS).map(([,v]) =>
+      `<span class="legend-badge" style="background:${v.bg};color:${v.color};">${v.label}</span>`
+    ).join('');
+
+  // Guide colors
+  document.getElementById('guideColors').innerHTML =
+    Object.entries(CATS).map(([,v]) =>
+      `<div class="cat-color-item">
+         <div class="cat-dot" style="background:${v.dot};"></div>
+         <span>${v.label} &#8594; <strong>${v.gcalColor}</strong></span>
+       </div>`
+    ).join('');
+
+  // Today
+  const now = new Date();
+  document.getElementById('todayDate').textContent =
+    `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日`;
+  document.getElementById('todayWeekday').textContent =
+    `${WEEKDAYS[now.getDay()]}曜日`;
+
+  // Default form date
+  document.getElementById('f-date').value = todayStr();
+
+  renderTab0();
+}
+
+/* =====================================================
+   TAB 0 RENDER
+===================================================== */
+function renderTab0() {
+  renderReminders();
+  renderTodayList();
+}
+
+function renderReminders() {
+  const reminders = loadEvents()
+    .filter(ev => {
+      const diff = daysDiff(ev.date);
+      return diff >= 0 && diff <= parseInt(ev.remindDays || 0);
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time||'').localeCompare(b.time||''));
+
+  const el = document.getElementById('remindList');
+
+  if (!reminders.length) {
+    el.innerHTML = '<div class="empty-state">近日中の要準備イベントはありません</div>';
+    return;
+  }
+
+  el.innerHTML = reminders.map(ev => {
+    const diff  = daysDiff(ev.date);
+    const urgent = diff <= 1;
+    const diffLabel = diff === 0 ? '今日！' : diff === 1 ? '明日！' : `${diff}日後`;
+    const icon = urgent ? '🔴' : '🟠';
+    return `
+      <div class="remind-card ${urgent ? 'urgent' : 'warning'}">
+        <div class="remind-label">${icon} ${esc(diffLabel)}</div>
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px;">
+          ${badge(ev.category)}
+          <span class="card-title">${esc(ev.title)}</span>
+        </div>
+        <div class="card-meta">
+          📅 ${fmtDate(ev.date)}${ev.time ? '　⏰ ' + esc(ev.time) : ''}
+          ${ev.location ? '　📍 ' + esc(ev.location) : ''}
+        </div>
+        ${ev.memo ? `<div class="card-memo">📝 事前準備：${esc(ev.memo)}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function renderTodayList() {
+  const today = todayStr();
+  const todayEvs = loadEvents()
+    .filter(ev => ev.date === today)
+    .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+
+  const el = document.getElementById('todayList');
+
+  if (!todayEvs.length) {
+    el.innerHTML = '<div class="empty-state">今日の予定はありません</div>';
+    return;
+  }
+
+  el.innerHTML = todayEvs.map(ev => `
+    <div class="card">
+      ${ev.time ? `<div class="time-chip">⏰ ${esc(ev.time)}</div>` : ''}
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px;">
+        ${badge(ev.category)}
+        <span class="card-title">${esc(ev.title)}</span>
+      </div>
+      ${ev.location ? `<div class="card-meta">📍 ${esc(ev.location)}</div>` : ''}
+      ${ev.memo ? `<div class="card-memo">📝 ${esc(ev.memo)}</div>` : ''}
+    </div>`).join('');
+}
+
+/* =====================================================
+   ALL EVENT LIST
+===================================================== */
+let eventListOpen = false;
+
+function toggleEventList() {
+  eventListOpen = !eventListOpen;
+  const el  = document.getElementById('allEventList');
+  const btn = document.getElementById('collapseBtn');
+  el.style.display = eventListOpen ? 'block' : 'none';
+  btn.innerHTML = eventListOpen
+    ? '登録済み予定一覧 &#9650;'
+    : '登録済み予定一覧 &#9660;';
+  if (eventListOpen) renderAllEventList();
+}
+
+function renderAllEventList() {
+  const events = loadEvents().sort((a,b) => a.date.localeCompare(b.date) || (a.time||'').localeCompare(b.time||''));
+  const el = document.getElementById('allEventList');
+
+  if (!events.length) {
+    el.innerHTML = '<div class="empty-state">登録された予定はありません</div>';
+    return;
+  }
+
+  const today = todayStr();
+  el.innerHTML = events.map(ev => {
+    const isPast = ev.date < today;
+    return `
+      <div class="event-item" style="${isPast ? 'opacity:.55;' : ''}">
+        <div class="event-info">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+            ${badge(ev.category)}
+            <span class="event-name">${esc(ev.title)}</span>
+          </div>
+          <div class="event-date">
+            📅 ${fmtDate(ev.date)}${ev.time ? '　⏰ ' + esc(ev.time) : ''}
+            ${ev.location ? '<br>📍 ' + esc(ev.location) : ''}
+          </div>
+        </div>
+        <button class="btn-delete" onclick="confirmDelete('${esc(ev.id)}')">削除</button>
+      </div>`;
+  }).join('');
+}
+
+function confirmDelete(id) {
+  if (confirm('この予定を削除しますか？\n（この操作は取り消せません）')) {
+    deleteEvent(id);
+  }
+}
+
+/* =====================================================
+   TAB 1: GENERATE
+===================================================== */
+function generateEvent() {
+  const category   = document.getElementById('f-category').value;
+  const title      = document.getElementById('f-title').value.trim();
+  const date       = document.getElementById('f-date').value;
+  const time       = document.getElementById('f-time').value;
+  const location   = document.getElementById('f-location').value.trim();
+  const memo       = document.getElementById('f-memo').value.trim();
+  const remindDays = document.getElementById('f-remind').value;
+
+  if (!title) { alert('タイトルを入力してください'); return; }
+  if (!date)  { alert('日付を選択してください'); return; }
+
+  // Save locally
+  addEvent({ category, title, date, time, location, memo, remindDays });
+
+  // Build Google Calendar URL
+  const url = buildGCalURL({ category, title, date, time, location, memo });
+
+  const result = document.getElementById('gcal-result');
+  result.style.display = 'block';
+  result.innerHTML = `
+    <div class="gcal-result-box">
+      <div class="res-label">✅ アプリへの保存が完了しました</div>
+      <div class="res-title">
+        ${badge(category)}
+        <span>${esc(title)}</span>
+      </div>
+      <div class="res-meta">
+        📅 ${fmtDate(date)}${time ? '　⏰ ' + esc(time) : ''}
+        ${location ? '<br>📍 ' + esc(location) : ''}
+      </div>
+      ${memo ? `<div class="card-memo" style="margin-top:8px;">📝 ${esc(memo)}</div>` : ''}
+      <a href="${url}" target="_blank" rel="noopener" class="gcal-link">
+        Googleカレンダーで開いて保存する &#8594;
+      </a>
+    </div>`;
+
+  // Reset form fields (keep category, date, remind)
+  document.getElementById('f-title').value    = '';
+  document.getElementById('f-time').value     = '';
+  document.getElementById('f-location').value = '';
+  document.getElementById('f-memo').value     = '';
+
+  renderTab0();
+}
+
+function buildGCalURL({ category, title, date, time, location, memo }) {
+  const base = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
+  const text = encodeURIComponent(`[${CATS[category].label}] ${title}`);
+
+  let dates;
+  if (time) {
+    const start = new Date(`${date}T${time}:00`);
+    const end   = new Date(start.getTime() + 60 * 60 * 1000); // +1h
+    dates = `${fmtGCal(start)}/${fmtGCal(end)}`;
+  } else {
+    // All-day: end = next day
+    const d    = date.replace(/-/g, '');
+    const next = new Date(`${date}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    const nd = `${next.getFullYear()}${pad(next.getMonth()+1)}${pad(next.getDate())}`;
+    dates = `${d}/${nd}`;
+  }
+
+  let details = memo ? `【事前準備】\n${memo}` : '';
+  let url = `${base}&text=${text}&dates=${dates}`;
+  if (details)  url += `&details=${encodeURIComponent(details)}`;
+  if (location) url += `&location=${encodeURIComponent(location)}`;
+  return url;
+}
+
+function fmtGCal(d) {
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}` +
+         `T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+}
+
+/* =====================================================
+   TABS
+===================================================== */
+function switchTab(idx) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  document.querySelectorAll('.tab-content').forEach((c, i) => c.classList.toggle('active', i === idx));
+  if (idx === 0) renderTab0();
+}
+
+/* =====================================================
+   START
+===================================================== */
+init();
+</script>
+</body>
+</html>
